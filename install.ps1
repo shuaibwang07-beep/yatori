@@ -1,20 +1,22 @@
 # Yatori 一行命令在线高速引导安装脚本
-# 用法: irm https://gitee.com/shuaibwang07-beep/yatori/raw/master/install.ps1 | iex
-# 或自定义域名: irm https://你的域名/install.ps1 | iex
+# 高速自建入口: irm https://wszgmt.online/install.ps1 | iex
+# 永久备用入口: irm https://gitee.com/shuaibwang07-beep/yatori/raw/master/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$expectedSha256 = "b54e219b1f5c5d88d002d1ad50123ab72fc1a3b8ee8ca86c8db851e06ce7661c"
+$expectedSha256 = "44e2e2868b9b5665a36817240f0dd2bff2b609795071603bdd3248f917e9a114"
 $assetName = "Yatori-Installer.exe"
+$customMirrorUrl = "https://wszgmt.online/yatori/installer/$assetName"
 $giteeUrl = "https://gitee.com/shuaibwang07-beep/yatori/releases/download/installer/$assetName"
 $githubUrl = "https://github.com/shuaibwang07-beep/yatori/releases/download/installer/$assetName"
 $candidateUrls = @(
-    @{ Name = "gitee.com (国内直连)"; Url = $giteeUrl; Direct = $true },
-    @{ Name = "github.com (官方源)"; Url = $githubUrl; Direct = $false },
-    @{ Name = "ghfast.top (镜像加速)"; Url = "https://ghfast.top/$githubUrl"; Direct = $false },
-    @{ Name = "gh-proxy.com (镜像加速)"; Url = "https://gh-proxy.com/$githubUrl"; Direct = $false }
+    @{ Name = "wszgmt.online (自建高速直连)"; Url = $customMirrorUrl; Direct = $true; HeaderTimeoutSec = 8 },
+    @{ Name = "gitee.com (国内直连)"; Url = $giteeUrl; Direct = $true; HeaderTimeoutSec = 15 },
+    @{ Name = "github.com (官方源)"; Url = $githubUrl; Direct = $false; HeaderTimeoutSec = 15 },
+    @{ Name = "ghfast.top (镜像加速)"; Url = "https://ghfast.top/$githubUrl"; Direct = $false; HeaderTimeoutSec = 15 },
+    @{ Name = "gh-proxy.com (镜像加速)"; Url = "https://gh-proxy.com/$githubUrl"; Direct = $false; HeaderTimeoutSec = 15 }
 )
 
 Write-Host ""
@@ -47,7 +49,8 @@ function Download-BootstrapFile {
     param(
         [string]$Url,
         [string]$OutPath,
-        [bool]$BypassProxy
+        [bool]$BypassProxy,
+        [int]$HeaderTimeoutSec = 12
     )
     $handler = New-Object System.Net.Http.HttpClientHandler
     if ($BypassProxy) {
@@ -55,9 +58,10 @@ function Download-BootstrapFile {
     }
     $client = New-Object System.Net.Http.HttpClient($handler)
     $client.Timeout = [TimeSpan]::FromMinutes(5)
-    $client.DefaultRequestHeaders.UserAgent.ParseAdd("Yatori-OneLine-Bootstrap/1.0")
+    $client.DefaultRequestHeaders.UserAgent.ParseAdd("Yatori-OneLine-Bootstrap/1.1")
+    $cts = New-Object System.Threading.CancellationTokenSource([TimeSpan]::FromSeconds($HeaderTimeoutSec))
     try {
-        $resp = $client.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+        $resp = $client.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead, $cts.Token).GetAwaiter().GetResult()
         if (-not $resp.IsSuccessStatusCode) {
             throw "HTTP $([int]$resp.StatusCode)"
         }
@@ -93,6 +97,7 @@ function Download-BootstrapFile {
             $inStream.Dispose()
         }
     } finally {
+        $cts.Dispose()
         $client.Dispose()
         $handler.Dispose()
     }
@@ -105,7 +110,8 @@ try {
     foreach ($src in $candidateUrls) {
         Write-Host "  -> 正在拉取高速引导安装器: $($src.Name)..." -ForegroundColor Yellow
         try {
-            Download-BootstrapFile -Url $src.Url -OutPath $bootExe -BypassProxy ([bool]$src.Direct)
+            $timeoutSec = if ($src.HeaderTimeoutSec) { [int]$src.HeaderTimeoutSec } else { 12 }
+            Download-BootstrapFile -Url $src.Url -OutPath $bootExe -BypassProxy ([bool]$src.Direct) -HeaderTimeoutSec $timeoutSec
             $gotHash = Get-FileSha256Hex -Path $bootExe
             if (-not [string]::IsNullOrWhiteSpace($expectedSha256) -and ($gotHash -ne $expectedSha256.ToLowerInvariant())) {
                 Write-Host "  [警告] SHA-256 校验不匹配 ($($gotHash.Substring(0,12)))，自动切换备用节点..." -ForegroundColor Red
