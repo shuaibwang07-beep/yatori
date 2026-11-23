@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$expectedSha256 = "44e2e2868b9b5665a36817240f0dd2bff2b609795071603bdd3248f917e9a114"
+$expectedSha256 = "af5a49b54dd1288d6dada768621418d8d9941662bdba2dfbd459f019f21d8635"
 $assetName = "Yatori-Installer.exe"
 $customMirrorUrl = "https://wszgmt.online/yatori/installer/$assetName"
 $giteeUrl = "https://gitee.com/shuaibwang07-beep/yatori/releases/download/installer/$assetName"
